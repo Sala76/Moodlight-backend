@@ -71,6 +71,56 @@ app.post("/log-mood", async (req, res) => {
   });
 });
 
+app.post("/finish-learning/:user_id", async (req, res) => {
+  const { user_id } = req.params;
+
+  // 1. get logs
+  const { data, error } = await supabase
+    .from("mood_logs")
+    .select("bpm, mood")
+    .eq("user_id", user_id);
+
+  if (error) return res.status(500).json({ error: error.message });
+
+  if (!data || data.length === 0) {
+    return res.json({ error: "No data" });
+  }
+
+  // 2. group
+  const groups = { sleep: [], calm: [], focus: [] };
+
+  data.forEach((r) => {
+    if (groups[r.mood]) groups[r.mood].push(r.bpm);
+  });
+
+  const avg = (arr) =>
+    arr.length ? arr.reduce((a, b) => a + b) / arr.length : null;
+
+  const thresholds = {
+    sleep: avg(groups.sleep),
+    calm: avg(groups.calm),
+    focus: avg(groups.focus),
+  };
+
+  // 3. save to users table
+  const { error: updateError } = await supabase
+    .from("users")
+    .update({
+      sleep_threshold: thresholds.sleep,
+      calm_threshold: thresholds.calm,
+      focus_threshold: thresholds.focus,
+      learning_complete: true,
+    })
+    .eq("id", user_id);
+
+  if (updateError) return res.status(500).json({ error: updateError.message });
+
+  res.json({
+    success: true,
+    thresholds,
+  });
+});
+
 // ----------------------------------------------------
 // 🧪 OLD AUTO MAPPING (KEEP FOR TESTING ONLY)
 // ----------------------------------------------------
