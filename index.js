@@ -8,13 +8,47 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// ✅ Supabase client (after env loads)
+// ✅ Supabase client
 const supabase = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_KEY
 );
 
-// 🔥 Mood logic
+// ----------------------------------------------------
+// 🧠 LEARNING MODE LOGGING (USER LABELLED DATA)
+// ----------------------------------------------------
+app.post("/log-mood", async (req, res) => {
+  const { user_id, bpm, mood } = req.body;
+
+  if (!user_id || !bpm || !mood) {
+    return res.status(400).json({ error: "Missing fields" });
+  }
+
+  const { data, error } = await supabase
+    .from("mood_logs")
+    .insert([
+      {
+        user_id,
+        bpm,
+        mood,
+      },
+    ])
+    .select();
+
+  if (error) {
+    console.log("Supabase insert error:", error.message);
+    return res.status(500).json({ error: error.message });
+  }
+
+  res.json({
+    success: true,
+    saved: data,
+  });
+});
+
+// ----------------------------------------------------
+// 🧪 OLD AUTO MAPPING (KEEP FOR TESTING ONLY)
+// ----------------------------------------------------
 app.post("/calculateMood", async (req, res) => {
   const { bpm, user_id } = req.body;
 
@@ -22,7 +56,6 @@ app.post("/calculateMood", async (req, res) => {
     return res.status(400).json({ error: "Invalid BPM" });
   }
 
-  // 1. mood logic
   let mood = "calm";
 
   if (bpm < 60) {
@@ -33,52 +66,27 @@ app.post("/calculateMood", async (req, res) => {
 
   console.log("BPM:", bpm, "Mood:", mood);
 
-  // 2. SAVE TO SUPABASE
-  const { data, error } = await supabase.from("mood_logs").insert([
+  const { error } = await supabase.from("mood_logs").insert([
     {
       user_id: user_id || null,
-      bpm: bpm,
-      mood: mood,
+      bpm,
+      mood,
     },
   ]);
 
   if (error) {
-    console.log("Supabase insert error:", error.message);
     return res.status(500).json({ error: error.message });
   }
 
-  // 3. return result
-  res.json({
-    mood,
-    saved: true,
-  });
+  res.json({ mood, saved: true });
 });
 
-// 🧪 Test Supabase connection
-app.get("/test-db", async (req, res) => {
-  const { data, error } = await supabase.from("users").select("*");
-
-  if (error) {
-    return res.status(500).json({ error: error.message });
-  }
-
-  res.json({ success: true, data });
-});
-
-// 🌐 Health check
-app.get("/", (req, res) => {
-  res.send("MoodLight API running");
-});
-
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-});
-
+// ----------------------------------------------------
+// 🧠 LEARNING ENGINE (PERSONAL USER AVERAGES)
+// ----------------------------------------------------
 app.get("/learn/:user_id", async (req, res) => {
   const { user_id } = req.params;
 
-  // 1. fetch all logs for this user
   const { data, error } = await supabase
     .from("mood_logs")
     .select("bpm, mood")
@@ -90,13 +98,11 @@ app.get("/learn/:user_id", async (req, res) => {
 
   if (!data || data.length === 0) {
     return res.json({
-      user_id,
-      message: "No data yet for learning",
+      message: "No learning data yet",
       averages: null,
     });
   }
 
-  // 2. group BPM by mood
   const groups = {
     sleep: [],
     calm: [],
@@ -109,21 +115,40 @@ app.get("/learn/:user_id", async (req, res) => {
     }
   }
 
-  // 3. helper to calculate average
   const avg = (arr) =>
     arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null;
 
-  // 4. calculate averages
-  const averages = {
-    sleep: avg(groups.sleep),
-    calm: avg(groups.calm),
-    focus: avg(groups.focus),
-  };
-
-  // 5. return result
   res.json({
     user_id,
     total_logs: data.length,
-    averages,
+    averages: {
+      sleep: avg(groups.sleep),
+      calm: avg(groups.calm),
+      focus: avg(groups.focus),
+    },
   });
+});
+
+// ----------------------------------------------------
+// 🧪 DB TEST
+// ----------------------------------------------------
+app.get("/test-db", async (req, res) => {
+  const { data, error } = await supabase.from("users").select("*");
+
+  if (error) return res.status(500).json({ error: error.message });
+
+  res.json({ success: true, data });
+});
+
+// ----------------------------------------------------
+// 🌐 HEALTH CHECK
+// ----------------------------------------------------
+app.get("/", (req, res) => {
+  res.send("MoodLight API running");
+});
+
+// ----------------------------------------------------
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
 });
