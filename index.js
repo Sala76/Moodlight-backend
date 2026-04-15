@@ -101,8 +101,9 @@ app.post("/finish-learning/:user_id", async (req, res) => {
     calm: avg(groups.calm),
     focus: avg(groups.focus),
   };
-
+  
   // 3. save to users table
+  const clean = (n) => Math.round(n);
   const { error: updateError } = await supabase
     .from("users")
     .update({
