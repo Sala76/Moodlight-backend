@@ -74,3 +74,56 @@ const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
+
+app.get("/learn/:user_id", async (req, res) => {
+  const { user_id } = req.params;
+
+  // 1. fetch all logs for this user
+  const { data, error } = await supabase
+    .from("mood_logs")
+    .select("bpm, mood")
+    .eq("user_id", user_id);
+
+  if (error) {
+    return res.status(500).json({ error: error.message });
+  }
+
+  if (!data || data.length === 0) {
+    return res.json({
+      user_id,
+      message: "No data yet for learning",
+      averages: null,
+    });
+  }
+
+  // 2. group BPM by mood
+  const groups = {
+    sleep: [],
+    calm: [],
+    focus: [],
+  };
+
+  for (const row of data) {
+    if (groups[row.mood]) {
+      groups[row.mood].push(row.bpm);
+    }
+  }
+
+  // 3. helper to calculate average
+  const avg = (arr) =>
+    arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null;
+
+  // 4. calculate averages
+  const averages = {
+    sleep: avg(groups.sleep),
+    calm: avg(groups.calm),
+    focus: avg(groups.focus),
+  };
+
+  // 5. return result
+  res.json({
+    user_id,
+    total_logs: data.length,
+    averages,
+  });
+});
