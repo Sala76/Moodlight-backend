@@ -24,6 +24,31 @@ app.post("/log-mood", async (req, res) => {
     return res.status(400).json({ error: "Missing fields" });
   }
 
+  // 1. get user created_at + learning status
+  const { data: userData, error: userError } = await supabase
+    .from("users")
+    .select("created_at, learning_complete")
+    .eq("id", user_id)
+    .single();
+
+  if (userError) {
+    return res.status(500).json({ error: userError.message });
+  }
+
+  // 2. check 3-day rule
+  const THREE_DAYS = 3 * 24 * 60 * 60 * 1000;
+
+  const isExpired =
+    Date.now() - new Date(userData.created_at).getTime() >= THREE_DAYS;
+
+  if (!userData.learning_complete && isExpired) {
+    await supabase
+      .from("users")
+      .update({ learning_complete: true })
+      .eq("id", user_id);
+  }
+
+  // 3. insert mood log
   const { data, error } = await supabase
     .from("mood_logs")
     .insert([
@@ -36,13 +61,13 @@ app.post("/log-mood", async (req, res) => {
     .select();
 
   if (error) {
-    console.log("Supabase insert error:", error.message);
     return res.status(500).json({ error: error.message });
   }
 
   res.json({
     success: true,
     saved: data,
+    learning_complete: isExpired,
   });
 });
 
