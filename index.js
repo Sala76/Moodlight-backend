@@ -15,24 +15,43 @@ const supabase = createClient(
 );
 
 // 🔥 Mood logic
-app.post("/calculateMood", (req, res) => {
-  const { bpm } = req.body;
+app.post("/calculateMood", async (req, res) => {
+  const { bpm, user_id } = req.body;
 
   if (!bpm || isNaN(bpm)) {
     return res.status(400).json({ error: "Invalid BPM" });
   }
 
+  // 1. mood logic
   let mood = "calm";
 
   if (bpm < 60) {
     mood = "sleep";
   } else if (bpm > 100) {
     mood = "focus";
-  } else {
-    mood = "calm";
   }
 
-  return res.json({ mood });
+  console.log("BPM:", bpm, "Mood:", mood);
+
+  // 2. SAVE TO SUPABASE
+  const { data, error } = await supabase.from("mood_logs").insert([
+    {
+      user_id: user_id || null,
+      bpm: bpm,
+      mood: mood,
+    },
+  ]);
+
+  if (error) {
+    console.log("Supabase insert error:", error.message);
+    return res.status(500).json({ error: error.message });
+  }
+
+  // 3. return result
+  res.json({
+    mood,
+    saved: true,
+  });
 });
 
 // 🧪 Test Supabase connection
