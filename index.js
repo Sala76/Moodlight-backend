@@ -106,9 +106,9 @@ app.post("/finish-learning/:user_id", async (req, res) => {
   const { error: updateError } = await supabase
     .from("users")
     .update({
-      sleep_avg: thresholds.sleep,
-      calm_avg: thresholds.calm,
-      focus_avg: thresholds.focus,
+      sleep_avg: clean(thresholds.sleep),
+      calm_avg: clean(thresholds.calm),
+      focus_avg: clean(thresholds.focus),
       learning_complete: true,
     })
     .eq("id", user_id);
