@@ -177,3 +177,76 @@ const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
+
+app.post("/predict-mood", async (req, res) => {
+  const { user_id, bpm } = req.body;
+
+  if (!user_id || !bpm) {
+    return res.status(400).json({ error: "Missing fields" });
+  }
+
+  // 1. check if user finished learning
+  const { data: user, error: userError } = await supabase
+    .from("users")
+    .select("learning_complete")
+    .eq("id", user_id)
+    .single();
+
+  if (userError) {
+    return res.status(500).json({ error: userError.message });
+  }
+
+  if (!user.learning_complete) {
+    return res.json({
+      error: "Still in learning mode",
+    });
+  }
+
+  // 2. get learned averages
+  const { data, error } = await supabase
+    .from("mood_logs")
+    .select("bpm, mood")
+    .eq("user_id", user_id);
+
+  if (error) {
+    return res.status(500).json({ error: error.message });
+  }
+
+  const groups = { sleep: [], calm: [], focus: [] };
+
+  for (const row of data) {
+    if (groups[row.mood]) {
+      groups[row.mood].push(row.bpm);
+    }
+  }
+
+  const avg = (arr) =>
+    arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null;
+
+  const thresholds = {
+    sleep: avg(groups.sleep),
+    calm: avg(groups.calm),
+    focus: avg(groups.focus),
+  };
+
+  // 3. predict based on closest match
+  let bestMood = "calm";
+  let smallestDiff = Infinity;
+
+  for (const mood of Object.keys(thresholds)) {
+    if (thresholds[mood] === null) continue;
+
+    const diff = Math.abs(bpm - thresholds[mood]);
+
+    if (diff < smallestDiff) {
+      smallestDiff = diff;
+      bestMood = mood;
+    }
+  }
+
+  res.json({
+    mood: bestMood,
+    bpm,
+    thresholds,
+  });
+});
