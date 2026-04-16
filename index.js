@@ -15,41 +15,68 @@ const supabase = createClient(
 );
 
 app.post("/create-user", async (req, res) => {
-  const { username, age, gender } = req.body;
-
-  if (!username || !age || !gender) {
-    return res.status(400).json({ error: "Missing fields" });
-  }
-
   try {
+    const { name, age, gender } = req.body;
+
+    // -----------------------------
+    // DEBUG (IMPORTANT)
+    // -----------------------------
+    console.log("📥 Incoming user payload:", req.body);
+
+    // -----------------------------
+    // VALIDATION
+    // -----------------------------
+    if (!name || !age || !gender) {
+      return res.status(400).json({
+        error: "Missing fields",
+        received: { name, age, gender },
+      });
+    }
+
+    if (isNaN(age)) {
+      return res.status(400).json({
+        error: "Age must be a number",
+      });
+    }
+
+    // -----------------------------
+    // INSERT INTO SUPABASE
+    // -----------------------------
     const { data, error } = await supabase
       .from("users")
       .insert([
         {
-          username,
-          age,
+          name: name.trim(),
+          age: Number(age),
           gender,
+          learning_complete: false,
           sleep_avg: null,
           calm_avg: null,
           focus_avg: null,
-          learning_complete: false,
         },
       ])
       .select()
       .single();
 
     if (error) {
+      console.log("❌ Supabase error:", error);
       return res.status(500).json({ error: error.message });
     }
 
-    res.json({
+    // -----------------------------
+    // SUCCESS RESPONSE
+    // -----------------------------
+    return res.json({
+      success: true,
       user_id: data.id,
       user: data,
     });
 
   } catch (err) {
-    console.log(err);
-    res.status(500).json({ error: "Server error" });
+    console.log("❌ Server crash:", err);
+    return res.status(500).json({
+      error: "Internal server error",
+    });
   }
 });
 // ----------------------------------------------------
