@@ -14,6 +14,44 @@ const supabase = createClient(
   process.env.SUPABASE_KEY
 );
 
+app.post("/create-user", async (req, res) => {
+  const { username, age, gender } = req.body;
+
+  if (!username || !age || !gender) {
+    return res.status(400).json({ error: "Missing fields" });
+  }
+
+  try {
+    const { data, error } = await supabase
+      .from("users")
+      .insert([
+        {
+          username,
+          age,
+          gender,
+          sleep_avg: null,
+          calm_avg: null,
+          focus_avg: null,
+          learning_complete: false,
+        },
+      ])
+      .select()
+      .single();
+
+    if (error) {
+      return res.status(500).json({ error: error.message });
+    }
+
+    res.json({
+      user_id: data.id,
+      user: data,
+    });
+
+  } catch (err) {
+    console.log(err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
 // ----------------------------------------------------
 // 🧠 HELPER FUNCTIONS
 // ----------------------------------------------------
