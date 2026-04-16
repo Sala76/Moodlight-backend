@@ -271,6 +271,36 @@ app.get("/test-db", async (req, res) => {
   res.json({ success: true, data });
 });
 
+app.post("/reset-learning/:user_id", async (req, res) => {
+  const { user_id } = req.params;
+
+  try {
+    const { error } = await supabase
+      .from("users")
+      .update({
+        sleep_avg: null,
+        calm_avg: null,
+        focus_avg: null,
+        learning_complete: false,
+      })
+      .eq("id", user_id);
+
+    if (error) {
+      return res.status(500).json({ error: error.message });
+    }
+
+    res.json({
+      success: true,
+      message: "Learning reset successfully",
+      user_id,
+    });
+
+  } catch (err) {
+    console.log(err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
 // ----------------------------------------------------
 // 🌐 HEALTH CHECK
 // ----------------------------------------------------
