@@ -275,7 +275,8 @@ app.post("/reset-learning/:user_id", async (req, res) => {
   const { user_id } = req.params;
 
   try {
-    const { error } = await supabase
+    // 1. reset user table
+    const { error: userError } = await supabase
       .from("users")
       .update({
         sleep_avg: null,
@@ -285,18 +286,26 @@ app.post("/reset-learning/:user_id", async (req, res) => {
       })
       .eq("id", user_id);
 
-    if (error) {
-      return res.status(500).json({ error: error.message });
+    if (userError) {
+      return res.status(500).json({ error: userError.message });
+    }
+
+    // 2. delete learning logs
+    const { error: logError } = await supabase
+      .from("mood_logs")
+      .delete()
+      .eq("user_id", user_id);
+
+    if (logError) {
+      return res.status(500).json({ error: logError.message });
     }
 
     res.json({
       success: true,
-      message: "Learning reset successfully",
-      user_id,
+      message: "Full learning reset completed",
     });
 
   } catch (err) {
-    console.log(err);
     res.status(500).json({ error: "Server error" });
   }
 });
