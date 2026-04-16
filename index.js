@@ -15,7 +15,17 @@ const supabase = createClient(
 );
 
 // ----------------------------------------------------
-// 🧠 LEARNING MODE LOGGING (USER LABELLED DATA)
+// 🧠 HELPER FUNCTIONS
+// ----------------------------------------------------
+const avg = (arr) => {
+  if (!arr.length) return null;
+  return arr.reduce((a, b) => a + b, 0) / arr.length;
+};
+
+const clean = (n) => (n === null ? null : Math.round(n));
+
+// ----------------------------------------------------
+// 🧠 LOG MOOD (LEARNING DATA)
 // ----------------------------------------------------
 app.post("/log-mood", async (req, res) => {
   const { user_id, bpm, mood } = req.body;
@@ -24,106 +34,207 @@ app.post("/log-mood", async (req, res) => {
     return res.status(400).json({ error: "Missing fields" });
   }
 
-  // 1. get user created_at + learning status
-  const { data: userData, error: userError } = await supabase
-    .from("users")
-    .select("created_at, learning_complete")
-    .eq("id", user_id)
-    .single();
-
-  if (userError) {
-    return res.status(500).json({ error: userError.message });
-  }
-
-  // 2. check 3-day rule
-  const THREE_DAYS = 3 * 24 * 60 * 60 * 1000;
-
-  const isExpired =
-    Date.now() - new Date(userData.created_at).getTime() >= THREE_DAYS;
-
-  if (!userData.learning_complete && isExpired) {
-    await supabase
+  try {
+    // get user
+    const { data: user, error: userError } = await supabase
       .from("users")
-      .update({ learning_complete: true })
-      .eq("id", user_id);
+      .select("created_at, learning_complete")
+      .eq("id", user_id)
+      .single();
+
+    if (userError) throw userError;
+
+    // check 3-day rule
+    const THREE_DAYS = 3 * 24 * 60 * 60 * 1000;
+    const isExpired =
+      Date.now() - new Date(user.created_at).getTime() >= THREE_DAYS;
+
+    // auto-finish learning if expired
+    if (!user.learning_complete && isExpired) {
+      await finishLearning(user_id);
+    }
+
+    // insert log
+    const { data, error } = await supabase
+      .from("mood_logs")
+      .insert([
+        {
+          user_id,
+          bpm: Number(bpm),
+          mood,
+        },
+      ])
+      .select();
+
+    if (error) throw error;
+
+    res.json({
+      success: true,
+      saved: data,
+      learning_complete: isExpired,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
-
-  // 3. insert mood log
-  const { data, error } = await supabase
-    .from("mood_logs")
-    .insert([
-      {
-        user_id,
-        bpm,
-        mood,
-      },
-    ])
-    .select();
-
-  if (error) {
-    return res.status(500).json({ error: error.message });
-  }
-
-  res.json({
-    success: true,
-    saved: data,
-    learning_complete: isExpired,
-  });
 });
 
-app.post("/finish-learning/:user_id", async (req, res) => {
-  const { user_id } = req.params;
-
-  // 1. get logs
+// ----------------------------------------------------
+// 🧠 FINISH LEARNING (SAVE MODEL)
+// ----------------------------------------------------
+async function finishLearning(user_id) {
   const { data, error } = await supabase
     .from("mood_logs")
     .select("bpm, mood")
     .eq("user_id", user_id);
 
-  if (error) return res.status(500).json({ error: error.message });
+  if (error) throw error;
+  if (!data || data.length === 0) throw new Error("No learning data");
 
-  if (!data || data.length === 0) {
-    return res.json({ error: "No data" });
-  }
+  const groups = {
+    sleep: [],
+    calm: [],
+    focus: [],
+  };
 
-  // 2. group
-  const groups = { sleep: [], calm: [], focus: [] };
-
-  data.forEach((r) => {
-    if (groups[r.mood]) groups[r.mood].push(r.bpm);
+  data.forEach((row) => {
+    if (groups[row.mood]) {
+      groups[row.mood].push(Number(row.bpm));
+    }
   });
 
-  const avg = (arr) =>
-    arr.length ? arr.reduce((a, b) => a + b) / arr.length : null;
-
-  const thresholds = {
-    sleep: avg(groups.sleep),
-    calm: avg(groups.calm),
-    focus: avg(groups.focus),
+  const updates = {
+    sleep_avg: clean(avg(groups.sleep)),
+    calm_avg: clean(avg(groups.calm)),
+    focus_avg: clean(avg(groups.focus)),
+    learning_complete: true,
   };
-  
-  // 3. save to users table
-  const clean = (n) => Math.round(n);
+
   const { error: updateError } = await supabase
     .from("users")
-    .update({
-      sleep_avg: clean(thresholds.sleep),
-      calm_avg: clean(thresholds.calm),
-      focus_avg: clean(thresholds.focus),
-      learning_complete: true,
-    })
+    .update(updates)
     .eq("id", user_id);
 
-  if (updateError) return res.status(500).json({ error: updateError.message });
+  if (updateError) throw updateError;
 
-  res.json({
-    success: true,
-    thresholds,
-  });
+  return updates;
+}
+
+// endpoint version (manual trigger)
+app.post("/finish-learning/:user_id", async (req, res) => {
+  try {
+    const updates = await finishLearning(req.params.user_id);
+
+    res.json({
+      success: true,
+      message: "Learning completed",
+      averages: updates,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // ----------------------------------------------------
-// 🧪 OLD AUTO MAPPING (KEEP FOR TESTING ONLY)
+// 🧠 LEARNING VIEW (DEBUG ONLY)
+// ----------------------------------------------------
+app.get("/learn/:user_id", async (req, res) => {
+  try {
+    const { user_id } = req.params;
+
+    const { data, error } = await supabase
+      .from("mood_logs")
+      .select("bpm, mood")
+      .eq("user_id", user_id);
+
+    if (error) throw error;
+
+    if (!data || data.length === 0) {
+      return res.json({
+        message: "No learning data yet",
+        averages: null,
+      });
+    }
+
+    const groups = { sleep: [], calm: [], focus: [] };
+
+    data.forEach((row) => {
+      if (groups[row.mood]) {
+        groups[row.mood].push(Number(row.bpm));
+      }
+    });
+
+    res.json({
+      user_id,
+      total_logs: data.length,
+      averages: {
+        sleep: avg(groups.sleep),
+        calm: avg(groups.calm),
+        focus: avg(groups.focus),
+      },
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ----------------------------------------------------
+// 🧠 PREDICT MOOD (USES SAVED MODEL)
+// ----------------------------------------------------
+app.post("/predict-mood", async (req, res) => {
+  const { user_id, bpm } = req.body;
+
+  if (!user_id || !bpm) {
+    return res.status(400).json({ error: "Missing fields" });
+  }
+
+  try {
+    // get trained values
+    const { data: user, error } = await supabase
+      .from("users")
+      .select(
+        "learning_complete, sleep_avg, calm_avg, focus_avg"
+      )
+      .eq("id", user_id)
+      .single();
+
+    if (error) throw error;
+
+    if (!user.learning_complete) {
+      return res.json({ error: "Still in learning mode" });
+    }
+
+    const thresholds = {
+      sleep: user.sleep_avg,
+      calm: user.calm_avg,
+      focus: user.focus_avg,
+    };
+
+    let bestMood = "calm";
+    let smallestDiff = Infinity;
+
+    for (const mood of Object.keys(thresholds)) {
+      if (thresholds[mood] === null) continue;
+
+      const diff = Math.abs(Number(bpm) - thresholds[mood]);
+
+      if (diff < smallestDiff) {
+        smallestDiff = diff;
+        bestMood = mood;
+      }
+    }
+
+    res.json({
+      mood: bestMood,
+      bpm: Number(bpm),
+      thresholds,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ----------------------------------------------------
+// 🧪 OLD TEST ENDPOINT
 // ----------------------------------------------------
 app.post("/calculateMood", async (req, res) => {
   const { bpm, user_id } = req.body;
@@ -133,76 +244,20 @@ app.post("/calculateMood", async (req, res) => {
   }
 
   let mood = "calm";
-
-  if (bpm < 60) {
-    mood = "sleep";
-  } else if (bpm > 100) {
-    mood = "focus";
-  }
-
-  console.log("BPM:", bpm, "Mood:", mood);
+  if (bpm < 60) mood = "sleep";
+  else if (bpm > 100) mood = "focus";
 
   const { error } = await supabase.from("mood_logs").insert([
     {
       user_id: user_id || null,
-      bpm,
+      bpm: Number(bpm),
       mood,
     },
   ]);
 
-  if (error) {
-    return res.status(500).json({ error: error.message });
-  }
+  if (error) return res.status(500).json({ error: error.message });
 
   res.json({ mood, saved: true });
-});
-
-// ----------------------------------------------------
-// 🧠 LEARNING ENGINE (PERSONAL USER AVERAGES)
-// ----------------------------------------------------
-app.get("/learn/:user_id", async (req, res) => {
-  const { user_id } = req.params;
-
-  const { data, error } = await supabase
-    .from("mood_logs")
-    .select("bpm, mood")
-    .eq("user_id", user_id);
-
-  if (error) {
-    return res.status(500).json({ error: error.message });
-  }
-
-  if (!data || data.length === 0) {
-    return res.json({
-      message: "No learning data yet",
-      averages: null,
-    });
-  }
-
-  const groups = {
-    sleep: [],
-    calm: [],
-    focus: [],
-  };
-
-  for (const row of data) {
-    if (groups[row.mood]) {
-      groups[row.mood].push(row.bpm);
-    }
-  }
-
-  const avg = (arr) =>
-    arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null;
-
-  res.json({
-    user_id,
-    total_logs: data.length,
-    averages: {
-      sleep: avg(groups.sleep),
-      calm: avg(groups.calm),
-      focus: avg(groups.focus),
-    },
-  });
 });
 
 // ----------------------------------------------------
@@ -227,77 +282,4 @@ app.get("/", (req, res) => {
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
-});
-
-app.post("/predict-mood", async (req, res) => {
-  const { user_id, bpm } = req.body;
-
-  if (!user_id || !bpm) {
-    return res.status(400).json({ error: "Missing fields" });
-  }
-
-  // 1. check if user finished learning
-  const { data: user, error: userError } = await supabase
-    .from("users")
-    .select("learning_complete")
-    .eq("id", user_id)
-    .single();
-
-  if (userError) {
-    return res.status(500).json({ error: userError.message });
-  }
-
-  if (!user.learning_complete) {
-    return res.json({
-      error: "Still in learning mode",
-    });
-  }
-
-  // 2. get learned averages
-  const { data, error } = await supabase
-    .from("mood_logs")
-    .select("bpm, mood")
-    .eq("user_id", user_id);
-
-  if (error) {
-    return res.status(500).json({ error: error.message });
-  }
-
-  const groups = { sleep: [], calm: [], focus: [] };
-
-  for (const row of data) {
-    if (groups[row.mood]) {
-      groups[row.mood].push(row.bpm);
-    }
-  }
-
-  const avg = (arr) =>
-    arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null;
-
-  const thresholds = {
-    sleep: avg(groups.sleep),
-    calm: avg(groups.calm),
-    focus: avg(groups.focus),
-  };
-
-  // 3. predict based on closest match
-  let bestMood = "calm";
-  let smallestDiff = Infinity;
-
-  for (const mood of Object.keys(thresholds)) {
-    if (thresholds[mood] === null) continue;
-
-    const diff = Math.abs(bpm - thresholds[mood]);
-
-    if (diff < smallestDiff) {
-      smallestDiff = diff;
-      bestMood = mood;
-    }
-  }
-
-  res.json({
-    mood: bestMood,
-    bpm,
-    thresholds,
-  });
 });
