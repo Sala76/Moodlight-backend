@@ -428,6 +428,38 @@ app.get("/get-user/:user_id", async (req, res) => {
   }
 });
 
+app.post("/override-learning", async (req, res) => {
+  const { user_id, calm, focus, sleep } = req.body;
+
+  // basic validation
+  if (!user_id || calm === undefined || focus === undefined || sleep === undefined) {
+    return res.status(400).json({ error: "Missing fields" });
+  }
+
+  try {
+    const { data, error } = await supabase
+      .from("users")
+      .update({
+        calm_avg: calm,
+        focus_avg: focus,
+        sleep_avg: sleep,
+        learning_complete: true,
+      })
+      .eq("id", user_id)
+      .select()
+      .single();
+
+    if (error) throw error;
+
+    res.json({
+      message: "Learning overridden successfully",
+      user: data,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ----------------------------------------------------
 // 🌐 HEALTH CHECK
 // ----------------------------------------------------
