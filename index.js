@@ -375,6 +375,37 @@ app.post("/reset-learning/:user_id", async (req, res) => {
   }
 });
 
+app.post("/update-name", async (req, res) => {
+  const { user_id, name } = req.body;
+
+  // basic validation
+  if (!user_id || !name) {
+    return res.status(400).json({ error: "Missing fields" });
+  }
+
+  if (name.length < 2) {
+    return res.status(400).json({ error: "Name too short" });
+  }
+
+  try {
+    const { data, error } = await supabase
+      .from("users")
+      .update({ name })
+      .eq("id", user_id)
+      .select()
+      .single();
+
+    if (error) throw error;
+
+    res.json({
+      message: "Name updated successfully",
+      user: data,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ----------------------------------------------------
 // 🌐 HEALTH CHECK
 // ----------------------------------------------------
