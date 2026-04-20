@@ -409,20 +409,16 @@ app.post("/update-name", async (req, res) => {
 app.get("/get-user/:user_id", async (req, res) => {
   const { user_id } = req.params;
 
-  if (!user_id) {
-    return res.status(400).json({ error: "Missing user_id" });
-  }
-
   try {
     const { data, error } = await supabase
       .from("users")
-      .select("name")
+      .select("name, learning_complete")
       .eq("id", user_id)
       .single();
 
     if (error) throw error;
 
-    res.json({ name: data.name });
+    res.json({ name: data.name, learning_complete: data.learning_complete });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
