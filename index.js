@@ -3,6 +3,7 @@ require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
 const { createClient } = require("@supabase/supabase-js");
+const bcrypt = require("bcrypt");
 
 const app = express();
 app.use(cors());
@@ -16,21 +17,18 @@ const supabase = createClient(
 
 app.post("/create-user", async (req, res) => {
   try {
-    const { name, age, gender } = req.body;
+    const { name, age, gender, password } = req.body;
 
     // -----------------------------
-    // DEBUG (IMPORTANT)
+    // DEBUG
     // -----------------------------
     console.log("📥 Incoming user payload:", req.body);
 
     // -----------------------------
     // VALIDATION
     // -----------------------------
-    if (!name || !age || !gender) {
-      return res.status(400).json({
-        error: "Missing fields",
-        received: { name, age, gender },
-      });
+    if (!name || !age || !gender || !password) {
+      return res.status(400).json({ error: "Missing fields" });
     }
 
     if (isNaN(age)) {
@@ -38,6 +36,11 @@ app.post("/create-user", async (req, res) => {
         error: "Age must be a number",
       });
     }
+
+    // -----------------------------
+    // HASH PASSWORD
+    // -----------------------------
+    const hashedPassword = await bcrypt.hash(password, 10);
 
     // -----------------------------
     // INSERT INTO SUPABASE
@@ -49,6 +52,7 @@ app.post("/create-user", async (req, res) => {
           name: name.trim(),
           age: Number(age),
           gender,
+          password_hash: hashedPassword,
           learning_complete: false,
           sleep_avg: null,
           calm_avg: null,
@@ -79,6 +83,54 @@ app.post("/create-user", async (req, res) => {
     });
   }
 });
+
+app.post("/login", async (req, res) => {
+  try {
+    const { name, password } = req.body;
+
+    // -----------------------------
+    // VALIDATION
+    // -----------------------------
+    if (!name || !password) {
+      return res.status(400).json({ error: "Missing fields" });
+    }
+
+    // -----------------------------
+    // GET USER
+    // -----------------------------
+    const { data: user, error } = await supabase
+      .from("users")
+      .select("*")
+      .eq("name", name.trim())
+      .single();
+
+    if (error || !user) {
+      return res.status(400).json({ error: "User not found" });
+    }
+
+    // -----------------------------
+    // CHECK PASSWORD
+    // -----------------------------
+    const match = await bcrypt.compare(password, user.password_hash);
+
+    if (!match) {
+      return res.status(400).json({ error: "Wrong password" });
+    }
+
+    // -----------------------------
+    // SUCCESS
+    // -----------------------------
+    return res.json({
+      success: true,
+      user_id: user.id,
+    });
+
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+
 // ----------------------------------------------------
 // 🧠 HELPER FUNCTIONS
 // ----------------------------------------------------
