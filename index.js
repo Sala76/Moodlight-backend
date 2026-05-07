@@ -9,7 +9,7 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// ✅ Supabase client
+// Supabase client
 const supabase = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_KEY
@@ -18,33 +18,20 @@ const supabase = createClient(
 app.post("/create-user", async (req, res) => {
   try {
     const { name, age, gender, password } = req.body;
-
-    // -----------------------------
-    // DEBUG
-    // -----------------------------
+    //debug log
     console.log("📥 Incoming user payload:", req.body);
 
-    // -----------------------------
-    // VALIDATION
-    // -----------------------------
-    if (!name || !age || !gender || !password) {
-      return res.status(400).json({ error: "Missing fields" });
-    }
+    // validation
+    if (!name || !age || !gender || !password) {return res.status(400).json({ error: "Missing fields" });}
 
     if (isNaN(age)) {
-      return res.status(400).json({
-        error: "Age must be a number",
-      });
+      return res.status(400).json({error: "Age must be a number",});
     }
 
-    // -----------------------------
-    // HASH PASSWORD
-    // -----------------------------
+    // hash password
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // -----------------------------
-    // INSERT INTO SUPABASE
-    // -----------------------------
+    // insert user into DB
     const { data, error } = await supabase
       .from("users")
       .insert([
@@ -67,9 +54,7 @@ app.post("/create-user", async (req, res) => {
       return res.status(500).json({ error: error.message });
     }
 
-    // -----------------------------
-    // SUCCESS RESPONSE
-    // -----------------------------
+    // return success response
     return res.json({
       success: true,
       user_id: data.id,
@@ -84,20 +69,16 @@ app.post("/create-user", async (req, res) => {
   }
 });
 
+
 app.post("/login", async (req, res) => {
   try {
     const { name, password } = req.body;
 
-    // -----------------------------
-    // VALIDATION
-    // -----------------------------
+    // validation
     if (!name || !password) {
       return res.status(400).json({ error: "Missing fields" });
     }
-
-    // -----------------------------
-    // GET USER
-    // -----------------------------
+    // get user
     const { data: user, error } = await supabase
       .from("users")
       .select("*")
@@ -107,19 +88,12 @@ app.post("/login", async (req, res) => {
     if (error || !user) {
       return res.status(400).json({ error: "User not found" });
     }
-
-    // -----------------------------
-    // CHECK PASSWORD
-    // -----------------------------
+    // check password
     const match = await bcrypt.compare(password, user.password_hash);
-
     if (!match) {
       return res.status(400).json({ error: "Wrong password" });
     }
-
-    // -----------------------------
-    // SUCCESS
-    // -----------------------------
+    // send success response
     return res.json({
       success: true,
       user_id: user.id,
