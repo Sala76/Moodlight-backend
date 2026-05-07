@@ -351,33 +351,6 @@ app.post("/predict-mood", async (req, res) => {
 });
 
 // ----------------------------------------------------
-// 🧪 OLD TEST ENDPOINT
-// ----------------------------------------------------
-app.post("/calculateMood", async (req, res) => {
-  const { bpm, user_id } = req.body;
-
-  if (!bpm || isNaN(bpm)) {
-    return res.status(400).json({ error: "Invalid BPM" });
-  }
-
-  let mood = "calm";
-  if (bpm < 60) mood = "sleep";
-  else if (bpm > 100) mood = "focus";
-
-  const { error } = await supabase.from("mood_logs").insert([
-    {
-      user_id: user_id || null,
-      bpm: Number(bpm),
-      mood,
-    },
-  ]);
-
-  if (error) return res.status(500).json({ error: error.message });
-
-  res.json({ mood, saved: true });
-});
-
-// ----------------------------------------------------
 // 🧪 DB TEST
 // ----------------------------------------------------
 app.get("/test-db", async (req, res) => {
