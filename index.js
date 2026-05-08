@@ -212,52 +212,9 @@ app.post("/finish-learning/:user_id", async (req, res) => {
   }
 });
 
-// ----------------------------------------------------
-// 🧠 LEARNING VIEW (DEBUG ONLY)
-// ----------------------------------------------------
-app.get("/learn/:user_id", async (req, res) => {
-  try {
-    const { user_id } = req.params;
 
-    const { data, error } = await supabase
-      .from("mood_logs")
-      .select("bpm, mood")
-      .eq("user_id", user_id);
 
-    if (error) throw error;
-
-    if (!data || data.length === 0) {
-      return res.json({
-        message: "No learning data yet",
-        averages: null,
-      });
-    }
-
-    const groups = { sleep: [], calm: [], focus: [] };
-
-    data.forEach((row) => {
-      if (groups[row.mood]) {
-        groups[row.mood].push(Number(row.bpm));
-      }
-    });
-
-    res.json({
-      user_id,
-      total_logs: data.length,
-      averages: {
-        sleep: avg(groups.sleep),
-        calm: avg(groups.calm),
-        focus: avg(groups.focus),
-      },
-    });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// ----------------------------------------------------
-// 🧠 PREDICT MOOD (USES SAVED MODEL)
-// ----------------------------------------------------
+// predict mood based on BPM and trained values
 app.post("/predict-mood", async (req, res) => {
   const { user_id, bpm } = req.body;
 
@@ -301,25 +258,10 @@ app.post("/predict-mood", async (req, res) => {
       }
     }
 
-    res.json({
-      mood: bestMood,
-      bpm: Number(bpm),
-      thresholds,
-    });
+    res.json({ mood: bestMood, bpm: Number(bpm), thresholds,});
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
-});
-
-// ----------------------------------------------------
-// 🧪 DB TEST
-// ----------------------------------------------------
-app.get("/test-db", async (req, res) => {
-  const { data, error } = await supabase.from("users").select("*");
-
-  if (error) return res.status(500).json({ error: error.message });
-
-  res.json({ success: true, data });
 });
 
 app.post("/reset-learning/:user_id", async (req, res) => {
@@ -337,9 +279,7 @@ app.post("/reset-learning/:user_id", async (req, res) => {
       })
       .eq("id", user_id);
 
-    if (userError) {
-      return res.status(500).json({ error: userError.message });
-    }
+    if (userError) {return res.status(500).json({ error: userError.message });}
 
     // 2. delete learning logs
     const { error: logError } = await supabase
@@ -347,9 +287,7 @@ app.post("/reset-learning/:user_id", async (req, res) => {
       .delete()
       .eq("user_id", user_id);
 
-    if (logError) {
-      return res.status(500).json({ error: logError.message });
-    }
+    if (logError) {return res.status(500).json({ error: logError.message });}
 
     res.json({
       success: true,
@@ -368,7 +306,6 @@ app.post("/update-name", async (req, res) => {
   if (!user_id || !name) {
     return res.status(400).json({ error: "Missing fields" });
   }
-
   if (name.length < 2) {
     return res.status(400).json({ error: "Name too short" });
   }
@@ -387,9 +324,7 @@ app.post("/update-name", async (req, res) => {
       message: "Name updated successfully",
       user: data,
     });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+  } catch (err) {res.status(500).json({ error: err.message });}
 });
 
 app.get("/get-user/:user_id", async (req, res) => {
@@ -442,9 +377,7 @@ app.post("/override-learning", async (req, res) => {
   }
 });
 
-// ----------------------------------------------------
-// 🌐 HEALTH CHECK
-// ----------------------------------------------------
+//  health check
 app.get("/", (req, res) => {
   res.send("MoodLight API running");
 });
