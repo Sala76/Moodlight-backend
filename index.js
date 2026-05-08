@@ -197,6 +197,63 @@ async function finishLearning(user_id) {
   return updates;
 }
 
+// endpoint version (manual trigger)
+app.post("/finish-learning/:user_id", async (req, res) => {
+  try {
+    const updates = await finishLearning(req.params.user_id);
+
+    res.json({
+      success: true,
+      message: "Learning completed",
+      averages: updates,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ----------------------------------------------------
+// 🧠 LEARNING VIEW (DEBUG ONLY)
+// ----------------------------------------------------
+app.get("/learn/:user_id", async (req, res) => {
+  try {
+    const { user_id } = req.params;
+
+    const { data, error } = await supabase
+      .from("mood_logs")
+      .select("bpm, mood")
+      .eq("user_id", user_id);
+
+    if (error) throw error;
+
+    if (!data || data.length === 0) {
+      return res.json({
+        message: "No learning data yet",
+        averages: null,
+      });
+    }
+
+    const groups = { sleep: [], calm: [], focus: [] };
+
+    data.forEach((row) => {
+      if (groups[row.mood]) {
+        groups[row.mood].push(Number(row.bpm));
+      }
+    });
+
+    res.json({
+      user_id,
+      total_logs: data.length,
+      averages: {
+        sleep: avg(groups.sleep),
+        calm: avg(groups.calm),
+        focus: avg(groups.focus),
+      },
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
 // ----------------------------------------------------
 // 🧠 PREDICT MOOD (USES SAVED MODEL)
