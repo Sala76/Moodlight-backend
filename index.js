@@ -197,7 +197,7 @@ async function finishLearning(user_id) {
   return updates;
 }
 
-// endpoint version (manual trigger)
+// endpoint version (manual trigger TESTING ONLY)
 app.post("/finish-learning/:user_id", async (req, res) => {
   try {
     const updates = await finishLearning(req.params.user_id);
