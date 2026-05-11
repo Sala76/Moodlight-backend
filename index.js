@@ -276,6 +276,7 @@ app.post("/reset-learning/:user_id", async (req, res) => {
         calm_avg: null,
         focus_avg: null,
         learning_complete: false,
+        created_at: new Date().toISOString(),
       })
       .eq("id", user_id);
 
